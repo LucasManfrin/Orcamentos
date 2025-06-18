@@ -1,0 +1,99 @@
+💡 Projeto Escolhido: Mini-SaaS de Orçamentos Online para Profissionais Autônomos
+Exemplo de uso:
+Uma manicure quer enviar orçamentos bonitos para suas clientes
+
+Um eletricista quer controlar os orçamentos enviados e marcados
+
+Um personal quer enviar pacotes de planos com descrição e preço
+
+Um tatuador quer permitir o cliente preencher um formulário e receber retorno no WhatsApp
+
+🧩 Funcionalidades básicas (MVP)
+Para o cliente (profissional autônomo):
+
+Página de login e cadastro
+
+Criar orçamentos com:
+
+Nome do serviço
+
+Descrição
+
+Preço
+
+Imagem ou ícone
+
+Link para pagamento ou WhatsApp
+
+Histórico de orçamentos enviados
+
+Respostas recebidas (WhatsApp ou por e-mail)
+
+Para o consumidor final:
+
+Link direto com o orçamento
+
+Página bonitinha com detalhes do serviço
+
+Botão de contato direto (WhatsApp ou e-mail)
+
+🧱 Stack recomendada (fácil e moderna)
+Parte	Tecnologia	Por quê?
+Frontend	React ou Next.js	Componentização, SPA, rápido
+Backend	Firebase (Firestore + Auth)	Simples, escalável e sem servidor
+UI	Tailwind CSS + shadcn/ui	Bonito, moderno, pronto pra usar
+Deploy	Vercel (grátis)	Fácil e rápido
+Pagamento (futuro)	Mercado Pago ou Appmax	Se quiser vender planos pro cliente
+
+🗺️ Roadmap de Desenvolvimento (com foco em aprendizado e resultado)
+🔹 Semana 1 – Planejamento e estrutura
+Criar repositório Git
+
+Configurar projeto com Next.js + Tailwind
+
+Criar rotas básicas: /login, /dashboard, /orcamento/:id
+
+🔹 Semana 2 – Autenticação e dashboard
+Firebase Auth (login por e-mail)
+
+Página de dashboard com lista de orçamentos
+
+Criar formulário para adicionar orçamento
+
+🔹 Semana 3 – Exibição do orçamento
+Página /orcamento/:id com dados bonitinhos
+
+Botão de contato (abre WhatsApp com mensagem pronta)
+
+Copiar link para compartilhar com cliente
+
+🔹 Semana 4 – Refinamento + publicação
+Estilizar com shadcn/ui
+
+Ajustar responsividade
+
+Testar fluxo completo
+
+Subir no Vercel
+
+Criar página pública explicando o projeto
+
+💼 Como transformar isso em negócio?
+Vender para clientes locais (salões, freelancers, autônomos)
+
+Ofereça: "Quer uma forma simples de enviar orçamentos e fechar mais clientes?"
+
+Preço: R$ 10~19/mês por cliente ou R$ 200 vitalício
+
+Publicar no Gumroad ou Hotmart
+
+Vende como produto digital com setup simples
+
+Pode vender como template para outros devs
+
+Transformar em white-label
+
+Deixa personalizável: logo, cor, link personalizado
+
+Vira um modelo de agência digital escalável
+
