@@ -2,6 +2,7 @@
 Mini-SaaS de Orçamentos Online para Profissionais Autônomos
 
 Exemplo de uso:
+
 Uma manicure quer enviar orçamentos bonitos para suas clientes
 
 Um eletricista quer controlar os orçamentos enviados e marcados
