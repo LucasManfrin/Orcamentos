@@ -115,7 +115,7 @@ export default function QuoteViewPage() {
 
         {/* Features */}
         <div className="mt-8 p-4 bg-white/50 rounded-lg">
-          <div className="flex items-center gap-4 text-sm text-gray-600">
+          <div className="flex items-center justify-center gap-4 text-sm text-gray-600 flex-wrap">
             <div className="flex items-center gap-1">
               <Check className="h-4 w-4 text-green-600" />
               <span>Profissional verificado</span>

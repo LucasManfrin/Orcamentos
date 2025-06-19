@@ -19,6 +19,34 @@ interface Service {
 }
 
 export default function CreateQuotePage() {
+  // Função para formatar moeda brasileira
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)
+  }
+
+  // Função para formatar input de moeda
+  const formatCurrencyInput = (value: string): string => {
+    // Remove tudo que não é número
+    const numbers = value.replace(/\D/g, "")
+
+    // Converte para centavos
+    const amount = Number.parseInt(numbers) / 100
+
+    // Formata como moeda
+    return formatCurrency(amount)
+  }
+
+  // Função para extrair valor numérico do input formatado
+  const parseCurrencyInput = (value: string): number => {
+    const numbers = value.replace(/\D/g, "")
+    return Number.parseInt(numbers) / 100 || 0
+  }
+
   const [services, setServices] = useState<Service[]>([{ id: "1", name: "", description: "", price: 0 }])
 
   const addService = () => {
@@ -39,6 +67,11 @@ export default function CreateQuotePage() {
 
   const updateService = (id: string, field: keyof Service, value: string | number) => {
     setServices(services.map((service) => (service.id === id ? { ...service, [field]: value } : service)))
+  }
+
+  const handlePriceChange = (id: string, formattedValue: string) => {
+    const numericValue = parseCurrencyInput(formattedValue)
+    updateService(id, "price", numericValue)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -111,11 +144,9 @@ export default function CreateQuotePage() {
                       <Label htmlFor={`price-${service.id}`}>Preço</Label>
                       <Input
                         id={`price-${service.id}`}
-                        type="number"
-                        step="0.01"
-                        value={service.price || ""}
-                        onChange={(e) => updateService(service.id, "price", Number.parseFloat(e.target.value) || 0)}
-                        placeholder="0,00"
+                        value={service.price > 0 ? formatCurrency(service.price) : ""}
+                        onChange={(e) => handlePriceChange(service.id, e.target.value)}
+                        placeholder="R$ 0,00"
                         required
                       />
                     </div>
@@ -138,7 +169,7 @@ export default function CreateQuotePage() {
             <CardContent>
               <div className="flex justify-between items-center text-lg font-semibold">
                 <span>Total:</span>
-                <span>R$ {total.toFixed(2).replace(".", ",")}</span>
+                <span>{formatCurrency(total)}</span>
               </div>
             </CardContent>
           </Card>
