@@ -17,13 +17,14 @@ export interface Service {
 export interface Quote {
   id: string
   userId: string
-  title: string
+  title?: string
   services: Service[]
   total: number
   status: "draft" | "sent" | "viewed" | "responded" | "accepted"
   createdAt: Date
   validUntil: Date
   viewCount: number
+  lastViewed?: Date
   responses?: QuoteResponse[]
 }
 
@@ -34,6 +35,7 @@ export interface QuoteResponse {
   clientContact: string
   message: string
   createdAt: Date
+  type: "whatsapp" | "email" | "chat"
 }
 
 export interface DashboardStats {

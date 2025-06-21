@@ -3,22 +3,23 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Plus, Trash2 } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react"
 import Link from "next/link"
-
-interface Service {
-  id: string
-  name: string
-  description: string
-  price: number
-}
+import { useAuth } from "@/lib/services/auth"
+import { createQuote } from "@/lib/services/quotes"
+import type { Service } from "@/lib/types"
 
 export default function CreateQuotePage() {
+  const router = useRouter()
+  const { user } = useAuth()
+  const [loading, setLoading] = useState(false)
+
   // Função para formatar moeda brasileira
   const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat("pt-BR", {
@@ -31,13 +32,8 @@ export default function CreateQuotePage() {
 
   // Função para formatar input de moeda
   const formatCurrencyInput = (value: string): string => {
-    // Remove tudo que não é número
     const numbers = value.replace(/\D/g, "")
-
-    // Converte para centavos
     const amount = Number.parseInt(numbers) / 100
-
-    // Formata como moeda
     return formatCurrency(amount)
   }
 
@@ -74,13 +70,60 @@ export default function CreateQuotePage() {
     updateService(id, "price", numericValue)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Salvar no Firebase e gerar link
-    console.log("Criando orçamento:", services)
+
+    if (!user) {
+      alert("Você precisa estar logado para criar um orçamento")
+      return
+    }
+
+    // Validar se todos os serviços têm nome e preço
+    const validServices = services.filter((s) => s.name.trim() && s.price > 0)
+    if (validServices.length === 0) {
+      alert("Adicione pelo menos um serviço com nome e preço")
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const result = await createQuote(user.uid, validServices)
+
+      if (result.success) {
+        alert("Orçamento criado com sucesso!")
+        router.push(`/quote/${result.id}`)
+      } else {
+        alert(result.error || "Erro ao criar orçamento")
+      }
+    } catch (error) {
+      console.error("Erro:", error)
+      alert("Erro inesperado ao criar orçamento")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const total = services.reduce((sum, service) => sum + service.price, 0)
+
+  // Redirect se não estiver logado
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Acesso Restrito</CardTitle>
+            <CardDescription>Você precisa estar logado para criar orçamentos</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="w-full">
+              <Link href="/login">Fazer Login</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -176,8 +219,15 @@ export default function CreateQuotePage() {
 
           {/* Actions */}
           <div className="flex gap-4">
-            <Button type="submit" className="flex-1">
-              Criar Orçamento
+            <Button type="submit" className="flex-1" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Criando...
+                </>
+              ) : (
+                "Criar Orçamento"
+              )}
             </Button>
             <Button type="button" variant="outline" asChild>
               <Link href="/dashboard">Cancelar</Link>

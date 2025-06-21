@@ -1,18 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import {
   Plus,
   TrendingUp,
-  TrendingDown,
   Eye,
+  Share,
   Send,
   CheckCircle,
   Clock,
@@ -24,88 +24,24 @@ import {
   Download,
   X,
   Save,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Edit, Trash2, MessageSquare } from "lucide-react"
-
-// Mock data - substituir por dados reais do Firebase
-const mockData = {
-  user: {
-    name: "Maria Silva",
-    profession: "Manicure Profissional",
-    avatar: "/placeholder.svg?height=40&width=40",
-    plan: "Profissional",
-  },
-  metrics: {
-    totalQuotes: 47,
-    monthlyQuotes: 12,
-    responseRate: 78,
-    conversionRate: 65,
-    totalRevenue: 3450.0,
-    monthlyRevenue: 890.0,
-    avgQuoteValue: 72.5,
-    pendingQuotes: 5,
-  },
-  recentQuotes: [
-    {
-      id: "1",
-      clientName: "Ana Costa",
-      service: "Manicure + Pedicure Completa",
-      value: 55.0,
-      status: "pending",
-      createdAt: "2024-01-20",
-      viewCount: 3,
-      lastViewed: "2024-01-20T14:30:00",
-    },
-    {
-      id: "2",
-      clientName: "Carla Santos",
-      service: "Pacote Noiva - Mãos e Pés",
-      value: 120.0,
-      status: "accepted",
-      createdAt: "2024-01-19",
-      viewCount: 8,
-      lastViewed: "2024-01-19T16:45:00",
-    },
-    {
-      id: "3",
-      clientName: "Juliana Lima",
-      service: "Manicure Simples",
-      value: 25.0,
-      status: "viewed",
-      createdAt: "2024-01-18",
-      viewCount: 2,
-      lastViewed: "2024-01-18T10:15:00",
-    },
-    {
-      id: "4",
-      clientName: "Patricia Oliveira",
-      service: "Pedicure + Esmaltação",
-      value: 40.0,
-      status: "expired",
-      createdAt: "2024-01-15",
-      viewCount: 1,
-      lastViewed: "2024-01-15T09:20:00",
-    },
-  ],
-  monthlyGoal: {
-    target: 15,
-    current: 12,
-    revenue: {
-      target: 1200,
-      current: 890,
-    },
-  },
-}
+import { useAuth, getUserData } from "@/lib/services/auth"
+import { getUserQuotes, deleteQuote } from "@/lib/services/quotes"
+import type { Quote, User } from "@/lib/types"
 
 const statusConfig = {
-  pending: { label: "Aguardando", color: "bg-yellow-100 text-yellow-800", icon: Clock },
-  viewed: { label: "Visualizado", color: "bg-blue-100 text-blue-800", icon: Eye },
+  draft: { label: "Rascunho", color: "bg-gray-100 text-gray-800", icon: Clock },
+  sent: { label: "Enviado", color: "bg-blue-100 text-blue-800", icon: Send },
+  viewed: { label: "Visualizado", color: "bg-purple-100 text-purple-800", icon: Eye },
+  responded: { label: "Respondido", color: "bg-yellow-100 text-yellow-800", icon: MessageSquare },
   accepted: { label: "Aceito", color: "bg-green-100 text-green-800", icon: CheckCircle },
-  expired: { label: "Expirado", color: "bg-gray-100 text-gray-800", icon: Clock },
 }
 
 const formatCurrency = (value: number): string => {
@@ -116,56 +52,169 @@ const formatCurrency = (value: number): string => {
 }
 
 export default function DashboardPage() {
+  const { user, loading: authLoading, initialized } = useAuth()
   const [activeTab, setActiveTab] = useState("overview")
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
 
+  // Estados para dados do Firebase
+  const [userData, setUserData] = useState<User | null>(null)
+  const [quotes, setQuotes] = useState<Quote[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Estados para metas (mantendo funcionalidade existente)
   const [isEditingGoals, setIsEditingGoals] = useState(false)
   const [editableGoals, setEditableGoals] = useState([
     {
       id: "1",
       title: "Orçamentos Mensais",
-      target: mockData.monthlyGoal.target,
-      current: mockData.monthlyGoal.current,
+      target: 15,
+      current: 0,
       type: "number",
       icon: Send,
     },
     {
       id: "2",
       title: "Receita Mensal",
-      target: mockData.monthlyGoal.revenue.target,
-      current: mockData.monthlyGoal.revenue.current,
+      target: 1200,
+      current: 0,
       type: "currency",
       icon: DollarSign,
     },
   ])
   const [showExcelMessage, setShowExcelMessage] = useState(false)
 
-  const filteredQuotes = mockData.recentQuotes.filter((quote) => {
-    const matchesSearch =
-      quote.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.service.toLowerCase().includes(searchTerm.toLowerCase())
+  // Carregar dados do usuário e orçamentos
+  useEffect(() => {
+    async function loadData() {
+      if (!user || !initialized) {
+        console.log("⚠️ Usuário não disponível ou não inicializado")
+        return
+      }
+
+      console.log("🔄 Carregando dados do dashboard...")
+      setLoading(true)
+      setError(null)
+
+      try {
+        // Carregar dados do usuário
+        console.log("🔄 Carregando dados do usuário...")
+        const userDataResult = await getUserData(user.uid)
+        if (userDataResult) {
+          console.log("✅ Dados do usuário carregados")
+          setUserData(userDataResult)
+        } else {
+          console.log("⚠️ Dados do usuário não encontrados")
+        }
+
+        // Carregar orçamentos
+        console.log("🔄 Carregando orçamentos...")
+        const quotesResult = await getUserQuotes(user.uid)
+        if (quotesResult.success && quotesResult.quotes) {
+          console.log("✅ Orçamentos carregados:", quotesResult.quotes.length)
+          setQuotes(quotesResult.quotes)
+
+          // Atualizar metas com dados reais
+          const currentMonth = new Date().getMonth()
+          const currentYear = new Date().getFullYear()
+
+          const monthlyQuotes = quotesResult.quotes.filter((quote) => {
+            const quoteDate = new Date(quote.createdAt)
+            return quoteDate.getMonth() === currentMonth && quoteDate.getFullYear() === currentYear
+          })
+
+          const monthlyRevenue = monthlyQuotes.reduce((sum, quote) => sum + quote.total, 0)
+
+          setEditableGoals((prev) => [
+            { ...prev[0], current: monthlyQuotes.length },
+            { ...prev[1], current: monthlyRevenue },
+          ])
+        } else {
+          console.error("❌ Erro ao carregar orçamentos:", quotesResult.error)
+          setError(quotesResult.error || "Erro ao carregar orçamentos")
+        }
+      } catch (err) {
+        console.error("❌ Erro inesperado ao carregar dados:", err)
+        setError("Erro inesperado ao carregar dados")
+      } finally {
+        setLoading(false)
+        console.log("✅ Carregamento do dashboard finalizado")
+      }
+    }
+
+    if (initialized) {
+      loadData()
+    }
+  }, [user, initialized])
+
+  // Calcular métricas
+  const metrics = {
+    totalQuotes: quotes.length,
+    monthlyQuotes: quotes.filter((quote) => {
+      const quoteDate = new Date(quote.createdAt)
+      const now = new Date()
+      return quoteDate.getMonth() === now.getMonth() && quoteDate.getFullYear() === now.getFullYear()
+    }).length,
+    responseRate:
+      quotes.length > 0
+        ? Math.round(
+            (quotes.filter((q) => q.status === "responded" || q.status === "accepted").length / quotes.length) * 100,
+          )
+        : 0,
+    conversionRate:
+      quotes.length > 0 ? Math.round((quotes.filter((q) => q.status === "accepted").length / quotes.length) * 100) : 0,
+    totalRevenue: quotes.reduce((sum, quote) => sum + quote.total, 0),
+    monthlyRevenue: quotes
+      .filter((quote) => {
+        const quoteDate = new Date(quote.createdAt)
+        const now = new Date()
+        return quoteDate.getMonth() === now.getMonth() && quoteDate.getFullYear() === now.getFullYear()
+      })
+      .reduce((sum, quote) => sum + quote.total, 0),
+    avgQuoteValue: quotes.length > 0 ? quotes.reduce((sum, quote) => sum + quote.total, 0) / quotes.length : 0,
+    pendingQuotes: quotes.filter((q) => q.status === "sent" || q.status === "viewed").length,
+  }
+
+  const filteredQuotes = quotes.filter((quote) => {
+    const matchesSearch = quote.services.some((service) =>
+      service.name.toLowerCase().includes(searchTerm.toLowerCase()),
+    )
     const matchesStatus = statusFilter === "all" || quote.status === statusFilter
     return matchesSearch && matchesStatus
   })
 
-  const goalProgress = (mockData.monthlyGoal.current / mockData.monthlyGoal.target) * 100
-  const revenueProgress = (mockData.monthlyGoal.revenue.current / mockData.monthlyGoal.revenue.target) * 100
+  const goalProgress = editableGoals[0].target > 0 ? (editableGoals[0].current / editableGoals[0].target) * 100 : 0
+  const revenueProgress = editableGoals[1].target > 0 ? (editableGoals[1].current / editableGoals[1].target) * 100 : 0
 
   const handleEditQuote = (quoteId: string) => {
     // TODO: Implementar edição
+    alert("Em desenvolvimento!")
     console.log("Editando orçamento:", quoteId)
   }
 
-  const handleDeleteQuote = (quoteId: string) => {
-    // TODO: Implementar exclusão
+  const handleShareQuote = (quoteId: string) => {
+    // TODO: Implementar edição
+    alert("Em desenvolvimento!")
+    console.log("Editando orçamento:", quoteId)
+  }
+  
+  
+  const handleDeleteQuote = async (quoteId: string) => {
     if (confirm("Tem certeza que deseja excluir este orçamento?")) {
-      console.log("Excluindo orçamento:", quoteId)
+      const result = await deleteQuote(quoteId)
+      if (result.success) {
+        setQuotes(quotes.filter((q) => q.id !== quoteId))
+        alert("Orçamento excluído com sucesso!")
+      } else {
+        alert("Erro ao excluir orçamento")
+      }
     }
   }
 
   const handleOpenChat = (quoteId: string) => {
     // TODO: Implementar chat
+    alert("Ainda em desenvolvimento")
     console.log("Abrindo chat para orçamento:", quoteId)
   }
 
@@ -177,20 +226,30 @@ export default function DashboardPage() {
 
   const handleCancelEdit = () => {
     // Restaurar valores originais
+    const currentMonth = new Date().getMonth()
+    const currentYear = new Date().getFullYear()
+
+    const monthlyQuotes = quotes.filter((quote) => {
+      const quoteDate = new Date(quote.createdAt)
+      return quoteDate.getMonth() === currentMonth && quoteDate.getFullYear() === currentYear
+    })
+
+    const monthlyRevenue = monthlyQuotes.reduce((sum, quote) => sum + quote.total, 0)
+
     setEditableGoals([
       {
         id: "1",
         title: "Orçamentos Mensais",
-        target: mockData.monthlyGoal.target,
-        current: mockData.monthlyGoal.current,
+        target: 15,
+        current: monthlyQuotes.length,
         type: "number",
         icon: Send,
       },
       {
         id: "2",
         title: "Receita Mensal",
-        target: mockData.monthlyGoal.revenue.target,
-        current: mockData.monthlyGoal.revenue.current,
+        target: 1200,
+        current: monthlyRevenue,
         type: "currency",
         icon: DollarSign,
       },
@@ -223,6 +282,79 @@ export default function DashboardPage() {
     setTimeout(() => setShowExcelMessage(false), 3000)
   }
 
+  // Loading state inicial
+  if (!initialized || authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Verificando autenticação...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Acesso Restrito</CardTitle>
+            <CardDescription>Você precisa estar logado para acessar o dashboard</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="w-full">
+              <Link href="/login">Fazer Login</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+  // Loading dashboard data
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Carregando dashboard...</p>
+          {process.env.NODE_ENV === "development" && (
+            <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
+              <p>User: {user?.email}</p>
+              <p>UID: {user?.uid}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              Erro
+            </CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => window.location.reload()} className="w-full">
+              Tentar Novamente
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Para debugar tudo
+  console.log("UserData:", userData)
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -231,11 +363,13 @@ export default function DashboardPage() {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600">Bem-vinda de volta, {mockData.user.name}!</p>
+              <p className="text-gray-600">
+                Bem-vind{userData?.name?.includes("a") ? "a" : "o"} de volta, {userData?.name || user.email}!
+              </p>
             </div>
             <div className="flex items-center gap-4">
               <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                Plano {mockData.user.plan}
+                {userData?.profession || "Profissional"}
               </Badge>
               <Button asChild>
                 <Link href="/dashboard/create">
@@ -252,7 +386,7 @@ export default function DashboardPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-            <TabsTrigger value="quotes">Orçamentos</TabsTrigger>
+            <TabsTrigger value="quotes">Orçamentos ({quotes.length})</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="goals">Metas</TabsTrigger>
           </TabsList>
@@ -267,10 +401,9 @@ export default function DashboardPage() {
                   <Send className="h-4 w-4 text-blue-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{mockData.metrics.monthlyQuotes}</div>
-                  <div className="flex items-center text-xs text-green-600">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    +20% vs mês anterior
+                  <div className="text-2xl font-bold">{metrics.monthlyQuotes}</div>
+                  <div className="flex items-center text-xs text-gray-600">
+                    <span>Total: {metrics.totalQuotes}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -281,10 +414,9 @@ export default function DashboardPage() {
                   <Eye className="h-4 w-4 text-purple-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{mockData.metrics.responseRate}%</div>
-                  <div className="flex items-center text-xs text-green-600">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    +5% vs mês anterior
+                  <div className="text-2xl font-bold">{metrics.responseRate}%</div>
+                  <div className="flex items-center text-xs text-gray-600">
+                    <span>Baseado em {metrics.totalQuotes} orçamentos</span>
                   </div>
                 </CardContent>
               </Card>
@@ -295,10 +427,9 @@ export default function DashboardPage() {
                   <CheckCircle className="h-4 w-4 text-green-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{mockData.metrics.conversionRate}%</div>
-                  <div className="flex items-center text-xs text-red-600">
-                    <TrendingDown className="h-3 w-3 mr-1" />
-                    -2% vs mês anterior
+                  <div className="text-2xl font-bold">{metrics.conversionRate}%</div>
+                  <div className="flex items-center text-xs text-gray-600">
+                    <span>{quotes.filter((q) => q.status === "accepted").length} aceitos</span>
                   </div>
                 </CardContent>
               </Card>
@@ -309,10 +440,9 @@ export default function DashboardPage() {
                   <DollarSign className="h-4 w-4 text-green-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(mockData.metrics.monthlyRevenue)}</div>
-                  <div className="flex items-center text-xs text-green-600">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    +15% vs mês anterior
+                  <div className="text-2xl font-bold">{formatCurrency(metrics.monthlyRevenue)}</div>
+                  <div className="flex items-center text-xs text-gray-600">
+                    <span>Total: {formatCurrency(metrics.totalRevenue)}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -332,14 +462,15 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     <div className="flex justify-between text-sm">
                       <span>
-                        {mockData.monthlyGoal.current} de {mockData.monthlyGoal.target} orçamentos
+                        {editableGoals[0].current} de {editableGoals[0].target} orçamentos
                       </span>
                       <span>{Math.round(goalProgress)}%</span>
                     </div>
                     <Progress value={goalProgress} className="h-3" />
                     <p className="text-xs text-gray-600">
-                      Faltam {mockData.monthlyGoal.target - mockData.monthlyGoal.current} orçamentos para atingir sua
-                      meta
+                      {editableGoals[0].target - editableGoals[0].current > 0
+                        ? `Faltam ${editableGoals[0].target - editableGoals[0].current} orçamentos para atingir sua meta`
+                        : "🎉 Meta atingida!"}
                     </p>
                   </div>
                 </CardContent>
@@ -357,16 +488,15 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     <div className="flex justify-between text-sm">
                       <span>
-                        {formatCurrency(mockData.monthlyGoal.revenue.current)} de{" "}
-                        {formatCurrency(mockData.monthlyGoal.revenue.target)}
+                        {formatCurrency(editableGoals[1].current)} de {formatCurrency(editableGoals[1].target)}
                       </span>
                       <span>{Math.round(revenueProgress)}%</span>
                     </div>
                     <Progress value={revenueProgress} className="h-3" />
                     <p className="text-xs text-gray-600">
-                      Faltam{" "}
-                      {formatCurrency(mockData.monthlyGoal.revenue.target - mockData.monthlyGoal.revenue.current)} para
-                      atingir sua meta
+                      {editableGoals[1].target - editableGoals[1].current > 0
+                        ? `Faltam ${formatCurrency(editableGoals[1].target - editableGoals[1].current)} para atingir sua meta`
+                        : "🎉 Meta atingida!"}
                     </p>
                   </div>
                 </CardContent>
@@ -377,50 +507,69 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Orçamentos Recentes</CardTitle>
-                <CardDescription>Seus últimos orçamentos enviados</CardDescription>
+                <CardDescription>Seus últimos orçamentos criados</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {mockData.recentQuotes.slice(0, 3).map((quote) => {
-                    const StatusIcon = statusConfig[quote.status as keyof typeof statusConfig].icon
-                    return (
-                      <div key={quote.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center gap-4">
-                          <Avatar>
-                            <AvatarImage src={`/placeholder.svg?height=40&width=40`} />
-                            <AvatarFallback>
-                              {quote.clientName
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{quote.clientName}</p>
-                            <p className="text-sm text-gray-600">{quote.service}</p>
+                {quotes.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">Você ainda não criou nenhum orçamento</p>
+                    <Button asChild>
+                      <Link href="/dashboard/create">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Criar Primeiro Orçamento
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {quotes.slice(0, 3).map((quote) => {
+                      const StatusIcon = statusConfig[quote.status as keyof typeof statusConfig].icon
+                      const mainService = quote.services[0]?.name || "Serviços"
+                      const serviceCount = quote.services.length
+
+                      return (
+                        <Link href={`/quote/${quote.id}`} key={quote.id}>
+                          <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                            <div className="flex items-center gap-4">
+                              <Avatar>
+                                <AvatarFallback>{mainService.charAt(0).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">{mainService}</p>
+                                <p className="text-sm text-gray-600">
+                                  {serviceCount > 1 ? `+ ${serviceCount - 1} outros serviços` : "Serviço único"}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Criado em {new Date(quote.createdAt).toLocaleDateString("pt-BR")}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="font-semibold">{formatCurrency(quote.total)}</p>
+                                <p className="text-xs text-gray-500">{quote.viewCount} visualizações</p>
+                              </div>
+                              <Badge
+                                className={`${statusConfig[quote.status as keyof typeof statusConfig].color} pointer-events-none`}
+                              >
+                                <StatusIcon className="h-3 w-3 mr-1" />
+                                {statusConfig[quote.status as keyof typeof statusConfig].label}
+                              </Badge>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <p className="font-semibold">{formatCurrency(quote.value)}</p>
-                            <p className="text-xs text-gray-500">{quote.viewCount} visualizações</p>
-                          </div>
-                          <Badge
-                            className={`${statusConfig[quote.status as keyof typeof statusConfig].color} pointer-events-none`}
-                          >
-                            <StatusIcon className="h-3 w-3 mr-1" />
-                            {statusConfig[quote.status as keyof typeof statusConfig].label}
-                          </Badge>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="mt-4">
-                  <Button variant="outline" className="w-full" onClick={() => setActiveTab("quotes")}>
-                    Ver Todos os Orçamentos
-                  </Button>
-                </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {quotes.length > 3 && (
+                  <div className="mt-4">
+                    <Button variant="outline" className="w-full" onClick={() => setActiveTab("quotes")}>
+                      Ver Todos os Orçamentos
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -437,7 +586,7 @@ export default function DashboardPage() {
                 <div className="flex gap-4 mb-6">
                   <div className="flex-1">
                     <Input
-                      placeholder="Buscar por cliente ou serviço..."
+                      placeholder="Buscar por serviço..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="max-w-sm"
@@ -449,41 +598,57 @@ export default function DashboardPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos os Status</SelectItem>
-                      <SelectItem value="pending">Aguardando</SelectItem>
+                      <SelectItem value="draft">Rascunho</SelectItem>
+                      <SelectItem value="sent">Enviado</SelectItem>
                       <SelectItem value="viewed">Visualizado</SelectItem>
+                      <SelectItem value="responded">Respondido</SelectItem>
                       <SelectItem value="accepted">Aceito</SelectItem>
-                      <SelectItem value="expired">Expirado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-4">
-                  {filteredQuotes.map((quote) => {
-                    const StatusIcon = statusConfig[quote.status as keyof typeof statusConfig].icon
-                    return (
-                      <Link href={`/quote/${quote.id}`} key={quote.id}>
-                        <div className="flex items-center justify-between p-4 border rounded-lg cursor-pointer">
-                          <div className="flex items-center gap-4">
+                {filteredQuotes.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">
+                      {quotes.length === 0
+                        ? "Você ainda não criou nenhum orçamento"
+                        : "Nenhum orçamento encontrado com os filtros aplicados"}
+                    </p>
+                    {quotes.length === 0 && (
+                      <Button asChild>
+                        <Link href="/dashboard/create">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Criar Primeiro Orçamento
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredQuotes.map((quote) => {
+                      const StatusIcon = statusConfig[quote.status as keyof typeof statusConfig].icon
+                      const mainService = quote.services[0]?.name || "Serviços"
+                      const serviceCount = quote.services.length
+
+                      return (
+                        <div key={quote.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <Link href={`/quote/${quote.id}`} className="flex items-center gap-4 flex-1 cursor-pointer">
                             <Avatar>
-                              <AvatarImage src={`/placeholder.svg?height=40&width=40`} />
-                              <AvatarFallback>
-                                {quote.clientName
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")}
-                              </AvatarFallback>
+                              <AvatarFallback>{mainService.charAt(0).toUpperCase()}</AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="font-medium">{quote.clientName}</p>
-                              <p className="text-sm text-gray-600">{quote.service}</p>
+                              <p className="font-medium">{mainService}</p>
+                              <p className="text-sm text-gray-600">
+                                {serviceCount > 1 ? `+ ${serviceCount - 1} outros serviços` : "Serviço único"}
+                              </p>
                               <p className="text-xs text-gray-500">
                                 Criado em {new Date(quote.createdAt).toLocaleDateString("pt-BR")}
                               </p>
                             </div>
-                          </div>
+                          </Link>
                           <div className="flex items-center gap-4">
                             <div className="text-right">
-                              <p className="font-semibold">{formatCurrency(quote.value)}</p>
+                              <p className="font-semibold">{formatCurrency(quote.total)}</p>
                               <p className="text-xs text-gray-500 flex items-center gap-1">
                                 <Eye className="h-3 w-3" />
                                 {quote.viewCount} visualizações
@@ -502,11 +667,12 @@ export default function DashboardPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem asChild>
-                                  <Link href={`/quote/${quote.id}`} className="flex items-center gap-2">
-                                    <Eye className="h-4 w-4" />
-                                    Visualizar
-                                  </Link>
+                                <DropdownMenuItem asChild
+                                onClick={() => handleShareQuote(quote.id)}
+                                className="flex items-center gap-2"
+                                  >
+                                  <Share className="h-4 w-4" />
+                                    Compartilhar
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleEditQuote(quote.id)}
@@ -533,10 +699,10 @@ export default function DashboardPage() {
                             </DropdownMenu>
                           </div>
                         </div>
-                      </Link>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -554,19 +720,19 @@ export default function DashboardPage() {
                 <CardContent className="space-y-4">
                   <div className="flex justify-between">
                     <span>Total de Orçamentos</span>
-                    <span className="font-semibold">{mockData.metrics.totalQuotes}</span>
+                    <span className="font-semibold">{metrics.totalQuotes}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Receita Total</span>
-                    <span className="font-semibold">{formatCurrency(mockData.metrics.totalRevenue)}</span>
+                    <span className="font-semibold">{formatCurrency(metrics.totalRevenue)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Valor Médio por Orçamento</span>
-                    <span className="font-semibold">{formatCurrency(mockData.metrics.avgQuoteValue)}</span>
+                    <span className="font-semibold">{formatCurrency(metrics.avgQuoteValue)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Orçamentos Pendentes</span>
-                    <span className="font-semibold text-yellow-600">{mockData.metrics.pendingQuotes}</span>
+                    <span className="font-semibold text-yellow-600">{metrics.pendingQuotes}</span>
                   </div>
 
                   <div className="pt-4 border-t">
@@ -594,30 +760,42 @@ export default function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Taxa de Visualização</span>
-                      <span>92%</span>
+                      <span>
+                        {quotes.filter((q) => q.viewCount > 0).length > 0
+                          ? Math.round((quotes.filter((q) => q.viewCount > 0).length / quotes.length) * 100)
+                          : 0}
+                        %
+                      </span>
                     </div>
-                    <Progress value={92} className="h-2" />
+                    <Progress
+                      value={
+                        quotes.filter((q) => q.viewCount > 0).length > 0
+                          ? (quotes.filter((q) => q.viewCount > 0).length / quotes.length) * 100
+                          : 0
+                      }
+                      className="h-2"
+                    />
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Taxa de Resposta</span>
-                      <span>{mockData.metrics.responseRate}%</span>
+                      <span>{metrics.responseRate}%</span>
                     </div>
-                    <Progress value={mockData.metrics.responseRate} className="h-2" />
+                    <Progress value={metrics.responseRate} className="h-2" />
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Taxa de Conversão</span>
-                      <span>{mockData.metrics.conversionRate}%</span>
+                      <span>{metrics.conversionRate}%</span>
                     </div>
-                    <Progress value={mockData.metrics.conversionRate} className="h-2" />
+                    <Progress value={metrics.conversionRate} className="h-2" />
                   </div>
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
-          {/* Goals Tab */}
+          {/* Goals Tab - mantendo funcionalidade existente */}
           <TabsContent value="goals" className="space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
               <Card>
@@ -689,12 +867,12 @@ export default function DashboardPage() {
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs text-gray-600">Atual</Label>
+                                <Label className="text-xs text-gray-600">Atual (Automático)</Label>
                                 <Input
                                   type="number"
                                   value={goal.current}
-                                  onChange={(e) => updateGoal(goal.id, "current", Number(e.target.value))}
-                                  className="bg-white"
+                                  disabled
+                                  className="bg-gray-100"
                                   placeholder="0"
                                 />
                               </div>
@@ -752,12 +930,14 @@ export default function DashboardPage() {
                   </div>
                   <div className="p-3 bg-green-50 rounded-lg">
                     <p className="text-sm font-medium text-green-900">📈 Otimize seus preços</p>
-                    <p className="text-xs text-green-700 mt-1">Seu valor médio está 15% abaixo do mercado</p>
+                    <p className="text-xs text-green-700 mt-1">
+                      Valor médio atual: {formatCurrency(metrics.avgQuoteValue)}
+                    </p>
                   </div>
                   <div className="p-3 bg-purple-50 rounded-lg">
-                    <p className="text-sm font-medium text-purple-900">⚡ Responda mais rápido</p>
+                    <p className="text-sm font-medium text-purple-900">⚡ Crie mais orçamentos</p>
                     <p className="text-xs text-purple-700 mt-1">
-                      Clientes que recebem resposta em até 2h convertem 40% mais
+                      Você tem {metrics.pendingQuotes} orçamentos aguardando resposta
                     </p>
                   </div>
                 </CardContent>
@@ -767,5 +947,6 @@ export default function DashboardPage() {
         </Tabs>
       </div>
     </div>
+  
   )
 }
